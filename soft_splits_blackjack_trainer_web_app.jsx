@@ -1,34 +1,32 @@
 import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 
-// -------------------- Card and deck utilities --------------------
+// ==================== Card & Deck Utilities ====================
 const suits = ['♠', '♥', '♦', '♣'];
 const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
 const createDeck = () => {
   const deck = [];
   for (let suit of suits) {
-    for (let rank of ranks) {
-      deck.push({ rank, suit });
-    }
+    for (let rank of ranks) deck.push({ rank, suit });
   }
   return deck;
 };
 
 const getValue = (card) => {
   if (["J", "Q", "K"].includes(card.rank)) return 10;
-  if (card.rank === "A") return 11;
-  return parseInt(card.rank);
+  if (card.rank === "A") return 11; // count A as 11; soft handling in handValue
+  return parseInt(card.rank, 10);
 };
 
 const handValue = (hand) => {
   let total = 0;
   let aces = 0;
-  for (let card of hand) {
-    total += getValue(card);
-    if (card.rank === 'A') aces++;
+  for (const c of hand) {
+    total += getValue(c);
+    if (c.rank === 'A') aces++;
   }
-  while (total > 21 && aces > 0) {
+  while (total > 21 && aces > 0) { // make soft Aces hard
     total -= 10;
     aces--;
   }
@@ -37,29 +35,31 @@ const handValue = (hand) => {
 
 const isPair = (hand) => hand.length === 2 && hand[0].rank === hand[1].rank;
 const isSoft = (hand) => hand.some(c => c.rank === 'A') && handValue(hand) <= 21;
+const isTenValue = (card) => ["10", "J", "Q", "K"].includes(card.rank);
+const isBlackjack = (hand) => hand.length === 2 && hand.some(c => c.rank === 'A') && hand.some(c => isTenValue(c)) && handValue(hand) === 21;
 
-// -------------------- Basic strategy (soft & splits only, simplified) --------------------
-const basicStrategy = (hand, dealerCard) => {
+// ==================== Basic Strategy (soft & pairs only, simplified) ====================
+const basicStrategy = (hand, dealerCardVal) => {
   if (isPair(hand)) {
-    const rank = hand[0].rank;
-    if (rank === 'A' || rank === '8') return 'Split';
-    if (rank === '9') return dealerCard >= 2 && dealerCard <= 9 && dealerCard !== 7 ? 'Split' : 'Stand';
-    if (rank === '7') return dealerCard <= 7 ? 'Split' : 'Hit';
-    if (rank === '6') return dealerCard <= 6 ? 'Split' : 'Hit';
-    if (rank === '4') return dealerCard === 5 || dealerCard === 6 ? 'Split' : 'Hit';
-    if (rank === '3' || rank === '2') return dealerCard <= 7 ? 'Split' : 'Hit';
+    const r = hand[0].rank;
+    if (r === 'A' || r === '8') return 'Split';
+    if (r === '9') return dealerCardVal >= 2 && dealerCardVal <= 9 && dealerCardVal !== 7 ? 'Split' : 'Stand';
+    if (r === '7') return dealerCardVal <= 7 ? 'Split' : 'Hit';
+    if (r === '6') return dealerCardVal <= 6 ? 'Split' : 'Hit';
+    if (r === '4') return dealerCardVal === 5 || dealerCardVal === 6 ? 'Split' : 'Hit';
+    if (r === '3' || r === '2') return dealerCardVal <= 7 ? 'Split' : 'Hit';
     return 'Hit';
   }
   if (isSoft(hand)) {
-    const value = handValue(hand);
-    if (value <= 17) return 'Hit';
-    if (value === 18) return dealerCard >= 9 ? 'Hit' : 'Stand';
+    const v = handValue(hand);
+    if (v <= 17) return 'Hit';
+    if (v === 18) return dealerCardVal >= 9 ? 'Hit' : 'Stand';
     return 'Stand';
   }
   return 'Hit';
 };
 
-// -------------------- Simple Sound FX (Web Audio API) --------------------
+// ==================== Simple Sound FX (Web Audio) ====================
 function createAudioCtx(ctxRef) {
   if (!ctxRef.current) {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -85,17 +85,13 @@ function playBeep(ctxRef, { freq = 440, duration = 0.08, type = 'sine', volume =
 }
 
 function playClick(ctxRef) {
-  // short noise burst for card slide
   const ctx = createAudioCtx(ctxRef);
   if (!ctx) return;
   const bufferSize = 4096;
   const node = ctx.createScriptProcessor(bufferSize, 1, 1);
   node.onaudioprocess = (e) => {
     const out = e.outputBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      // filtered noise that quickly decays
-      out[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize) * 0.15;
-    }
+    for (let i = 0; i < bufferSize; i++) out[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize) * 0.15;
   };
   node.connect(ctx.destination);
   setTimeout(() => node.disconnect(), 60);
@@ -105,7 +101,7 @@ const SFX = {
   deal: (ctx) => playClick(ctx),
   hit: (ctx) => playClick(ctx),
   stand: (ctx) => playBeep(ctx, { freq: 320, duration: 0.09, type: 'triangle' }),
-  split: (ctx) => { playBeep(ctx, { freq: 660, duration: 0.06 }); playBeep(ctx, { freq: 660, duration: 0.06 }); },
+  split: (ctx) => { playBeep(ctx, { freq: 660, duration: 0.06 }); setTimeout(() => playBeep(ctx, { freq: 660, duration: 0.06 }), 70); },
   double: (ctx) => playBeep(ctx, { freq: 220, duration: 0.12, type: 'square', glideTo: 330 }),
   flip: (ctx) => playBeep(ctx, { freq: 520, duration: 0.08, type: 'sine' }),
   bet: (ctx) => playBeep(ctx, { freq: 420, duration: 0.08, type: 'sine' }),
@@ -114,7 +110,19 @@ const SFX = {
   push: (ctx) => playBeep(ctx, { freq: 400, duration: 0.08, type: 'triangle' }),
 };
 
-// -------------------- UI bits --------------------
+// ==================== Confetti (Blackjack celebration) ====================
+const Confetti = () => (
+  <motion.div
+    className="absolute inset-0 pointer-events-none flex justify-center items-start"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: [0, 1, 0] }}
+    transition={{ duration: 2 }}
+  >
+    <div className="text-6xl">🎉</div>
+  </motion.div>
+);
+
+// ==================== UI Bits ====================
 const PlayingCard = ({ card }) => {
   const isRed = card.suit === '♥' || card.suit === '♦';
   return (
@@ -159,11 +167,11 @@ const Chip = ({ value, onClick }) => {
   );
 };
 
-// -------------------- Main Component --------------------
+// ==================== Main Component ====================
 const BlackjackTrainer = () => {
   const [deck, setDeck] = useState(createDeck());
   const [playerHands, setPlayerHands] = useState([]);
-  const [handBets, setHandBets] = useState([]); // bet per hand (handles splits & doubles)
+  const [handBets, setHandBets] = useState([]); // bet per hand (splits & doubles)
   const [activeHand, setActiveHand] = useState(0);
   const [dealerHand, setDealerHand] = useState([]);
   const [bankroll, setBankroll] = useState(1000);
@@ -172,10 +180,12 @@ const BlackjackTrainer = () => {
   const [autoDeal, setAutoDeal] = useState(false);
   const [revealHole, setRevealHole] = useState(false);
   const [bankrollDelta, setBankrollDelta] = useState(0);
-  const [handOutcomes, setHandOutcomes] = useState([]); // 'Win' | 'Lose' | 'Push'
+  const [handOutcomes, setHandOutcomes] = useState([]); // 'Win' | 'Lose' | 'Push' | 'Blackjack'
   const [animBetPing, setAnimBetPing] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
   const audioCtxRef = useRef(null);
 
+  // Draw a card from given array, updating state deck too
   const dealCard = (d) => {
     const idx = Math.floor(Math.random() * d.length);
     const card = d[idx];
@@ -185,26 +195,49 @@ const BlackjackTrainer = () => {
     return card;
   };
 
+  // Start a round ensuring initial hand is soft, pair, or blackjack
   const startRound = () => {
     let d = createDeck();
-    let player = [dealCard(d), dealCard(d)];
-    let dealer = [dealCard(d), dealCard(d)];
-    if (!isSoft(player) && !isPair(player)) {
-      return startRound();
-    }
+    let player, dealer;
+    // Keep dealing until start hand matches our mode (soft or pair or blackjack)
+    do {
+      d = createDeck();
+      const a = dealCard(d); const b = dealCard(d);
+      const up = dealCard(d); const hole = dealCard(d);
+      player = [a, b];
+      dealer = [up, hole];
+    } while (!isSoft(player) && !isPair(player) && !isBlackjack(player));
+
     setDeck(d);
     setPlayerHands([[...player]]);
     setHandBets([bet]);
     setActiveHand(0);
     setDealerHand(dealer);
-    setInRound(true);
     setRevealHole(false);
     setBankrollDelta(0);
     setHandOutcomes([]);
-    // chip tween & sound at round start
+    setShowConfetti(false);
+
+    // Chip tween & sound
     setAnimBetPing(true);
     setTimeout(() => setAnimBetPing(false), 500);
     SFX.deal(audioCtxRef);
+
+    // Natural blackjack: auto-settle at 3:2
+    if (isBlackjack(player)) {
+      const bjPay = bet * 1.5;
+      setInRound(false);
+      setHandOutcomes(['Blackjack']);
+      setBankroll((bk) => bk + bjPay);
+      setBankrollDelta(bjPay);
+      setShowConfetti(true);
+      SFX.win(audioCtxRef);
+      setTimeout(() => setShowConfetti(false), 2000);
+      if (autoDeal) setTimeout(() => startRound(), 2500);
+      return;
+    }
+
+    setInRound(true);
   };
 
   const hit = () => {
@@ -212,77 +245,62 @@ const BlackjackTrainer = () => {
     newHands[activeHand].push(dealCard(deck));
     setPlayerHands(newHands);
     SFX.hit(audioCtxRef);
-    if (handValue(newHands[activeHand]) > 21) {
-      SFX.lose(audioCtxRef);
-      nextHand();
-    }
+    if (handValue(newHands[activeHand]) > 21) { SFX.lose(audioCtxRef); nextHand(); }
   };
 
-  const stand = () => {
-    SFX.stand(audioCtxRef);
-    nextHand();
-  };
+  const stand = () => { SFX.stand(audioCtxRef); nextHand(); };
 
   const split = () => {
     const newHands = [...playerHands];
     const hand = newHands[activeHand];
-    if (isPair(hand)) {
-      const card1 = hand[0];
-      const card2 = hand[1];
-      newHands.splice(activeHand, 1, [card1, dealCard(deck)], [card2, dealCard(deck)]);
-      setPlayerHands(newHands);
-      const newBets = [...handBets];
-      const thisBet = newBets[activeHand];
-      newBets.splice(activeHand, 1, thisBet, thisBet);
-      setHandBets(newBets);
-      SFX.split(audioCtxRef);
-    }
+    if (!isPair(hand)) return;
+    const card1 = hand[0];
+    const card2 = hand[1];
+    newHands.splice(activeHand, 1, [card1, dealCard(deck)], [card2, dealCard(deck)]);
+    setPlayerHands(newHands);
+    const newBets = [...handBets];
+    const thisBet = newBets[activeHand];
+    newBets.splice(activeHand, 1, thisBet, thisBet);
+    setHandBets(newBets);
+    SFX.split(audioCtxRef);
   };
 
   const doubleDown = () => {
     if (!inRound) return;
     const newHands = [...playerHands];
-    if (newHands[activeHand].length !== 2) return;
+    if (newHands[activeHand].length !== 2) return; // two-card only
     newHands[activeHand] = [...newHands[activeHand], dealCard(deck)];
     setPlayerHands(newHands);
     const newBets = [...handBets];
-    newBets[activeHand] = newBets[activeHand] * 2;
+    newBets[activeHand] = (newBets[activeHand] ?? bet) * 2;
     setHandBets(newBets);
     SFX.double(audioCtxRef);
     nextHand();
   };
 
   const nextHand = () => {
-    if (activeHand < playerHands.length - 1) {
-      setActiveHand(activeHand + 1);
-    } else {
-      dealerPlay();
-    }
+    if (activeHand < playerHands.length - 1) setActiveHand(activeHand + 1);
+    else dealerPlay();
   };
 
   const dealerPlay = () => {
-    setRevealHole(true);
-    SFX.flip(audioCtxRef);
+    setRevealHole(true); SFX.flip(audioCtxRef);
     let dHand = [...dealerHand];
-    while (handValue(dHand) < 17) {
-      dHand.push(dealCard(deck));
-      SFX.deal(audioCtxRef);
-    }
+    while (handValue(dHand) < 17) { dHand.push(dealCard(deck)); SFX.deal(audioCtxRef); }
     setDealerHand(dHand);
     resolveHands(dHand);
   };
 
   const resolveHands = (dHand) => {
     const dVal = handValue(dHand);
-    let results = [];
+    const results = [];
     let bankrollChange = 0;
     playerHands.forEach((hand, i) => {
       const pVal = handValue(hand);
-      let outcome = '';
+      let outcome = 'Push';
       if (pVal > 21) outcome = 'Lose';
       else if (dVal > 21 || pVal > dVal) outcome = 'Win';
       else if (pVal < dVal) outcome = 'Lose';
-      else outcome = 'Push';
       results.push(outcome);
       const wager = handBets[i] ?? bet;
       if (outcome === 'Win') bankrollChange += wager;
@@ -293,36 +311,40 @@ const BlackjackTrainer = () => {
     setBankroll((bk) => bk + bankrollChange);
     setBankrollDelta(bankrollChange);
 
-    // play outcome sound (prioritize worst -> best if mixed)
-    if (results.every(r => r === 'Push')) {
-      SFX.push(audioCtxRef);
-    } else if (results.some(r => r === 'Lose') && !results.some(r => r === 'Win')) {
-      SFX.lose(audioCtxRef);
-    } else if (results.some(r => r === 'Win') && !results.some(r => r === 'Lose')) {
-      SFX.win(audioCtxRef);
-    } else {
-      // mixed results
-      SFX.push(audioCtxRef);
-    }
+    if (results.every(r => r === 'Push')) SFX.push(audioCtxRef);
+    else if (results.some(r => r === 'Lose') && !results.some(r => r === 'Win')) SFX.lose(audioCtxRef);
+    else if (results.some(r => r === 'Win') && !results.some(r => r === 'Lose')) SFX.win(audioCtxRef);
+    else SFX.push(audioCtxRef);
 
     setInRound(false);
-    if (autoDeal) {
-      setTimeout(() => {
-        startRound();
-      }, 2500);
-    }
+    if (autoDeal) setTimeout(() => startRound(), 2500);
   };
 
   const canDouble = inRound && playerHands[activeHand] && playerHands[activeHand].length === 2;
 
-  // Wrap chip click so we can play a sound too
-  const handleChip = (value) => {
-    setBet(value);
-    SFX.bet(audioCtxRef);
-  };
+  const handleChip = (value) => { setBet(value); SFX.bet(audioCtxRef); };
 
+  // ==================== Minimal Dev Tests (run once) ====================
+  // These run in-browser as console checks to catch regressions quickly.
+  try {
+    // Blackjack detection
+    const testBJ = [{ rank: 'A', suit: '♠' }, { rank: 'K', suit: '♥' }];
+    console.assert(isBlackjack(testBJ) === true, 'Test: isBlackjack should be true for A+K');
+    // Soft total detection (A+6 = 17 soft)
+    const testSoft = [{ rank: 'A', suit: '♠' }, { rank: '6', suit: '♦' }];
+    console.assert(isSoft(testSoft) === true && handValue(testSoft) === 17, 'Test: A+6 soft 17');
+    // Pair detection
+    const testPair = [{ rank: '8', suit: '♠' }, { rank: '8', suit: '♦' }];
+    console.assert(isPair(testPair) === true, 'Test: pair of 8s');
+    // Hand value with ace downgrade
+    const testBustSoft = [{ rank: 'A', suit: '♠' }, { rank: '9', suit: '♦' }, { rank: '9', suit: '♣' }];
+    console.assert(handValue(testBustSoft) === 19, 'Test: A+9+9 => 29 -> 19');
+  } catch (_) {}
+
+  // ==================== Render ====================
   return (
-    <div className="p-6 max-w-2xl mx-auto rounded-lg shadow-lg select-none" style={{ background: 'radial-gradient(circle, #006400, #013220)' }}>
+    <div className="relative p-6 max-w-2xl mx-auto rounded-lg shadow-lg select-none" style={{ background: 'radial-gradient(circle, #006400, #013220)' }}>
+      {showConfetti && <Confetti />}
       <h1 className="text-3xl font-bold mb-4 text-center text-yellow-300 drop-shadow">Soft & Split Blackjack Trainer</h1>
 
       <div className="mb-4 text-white text-lg flex items-center gap-3">
@@ -331,7 +353,6 @@ const BlackjackTrainer = () => {
           key={bankrollDelta}
           initial={{ y: -6, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 6, opacity: 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 20 }}
           className={`px-2 py-0.5 rounded-full text-sm ${bankrollDelta > 0 ? 'bg-green-500/30 text-green-200' : bankrollDelta < 0 ? 'bg-red-500/30 text-red-200' : 'bg-slate-500/30 text-slate-200'}`}
         >
@@ -359,20 +380,18 @@ const BlackjackTrainer = () => {
 
       <div className="mb-2 text-white">
         <label>
-          <input type="checkbox" checked={autoDeal} onChange={e => setAutoDeal(e.target.checked)} className="mr-2" /> Auto Deal
+          <input type="checkbox" checked={autoDeal} onChange={(e) => setAutoDeal(e.target.checked)} className="mr-2" /> Auto Deal
         </label>
         {!inRound && (
-          <button onClick={startRound} className="ml-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-6 py-2 rounded-full shadow">
-            Deal
-          </button>
+          <button onClick={startRound} className="ml-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-6 py-2 rounded-full shadow">Deal</button>
         )}
       </div>
 
       <div className="mt-6">
+        {/* Dealer */}
         <div className="mb-4">
           <h2 className="text-xl font-semibold text-white mb-2">Dealer</h2>
           <div className="flex space-x-2 items-center">
-            {/* Upcard + facedown with flip on reveal */}
             {!revealHole ? (
               <>
                 {dealerHand[0] && <PlayingCard card={dealerHand[0]} />}
@@ -391,11 +410,9 @@ const BlackjackTrainer = () => {
           </div>
         </div>
 
+        {/* Player Hands */}
         {playerHands.map((hand, idx) => (
-          <div
-            key={idx}
-            className={`mb-4 p-2 rounded-lg bg-green-900 transition-shadow ${idx === activeHand ? 'shadow-[0_0_0_2px_rgba(255,255,255,0.35),0_0_18px_rgba(255,255,255,0.25)]' : 'shadow-none'}`}
-          >
+          <div key={idx} className={`mb-4 p-2 rounded-lg bg-green-900 transition-shadow ${idx === activeHand ? 'shadow-[0_0_0_2px_rgba(255,255,255,0.35),0_0_18px_rgba(255,255,255,0.25)]' : 'shadow-none'}`}>
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-semibold text-white">Player Hand {idx + 1}</h2>
               <div className="flex items-center gap-2">
@@ -404,9 +421,9 @@ const BlackjackTrainer = () => {
                   <motion.span
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${handOutcomes[idx] === 'Win' ? 'bg-green-500/30 text-green-200' : handOutcomes[idx] === 'Lose' ? 'bg-red-500/30 text-red-200' : 'bg-slate-500/30 text-slate-200'}`}
+                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${handOutcomes[idx] === 'Win' ? 'bg-green-500/30 text-green-200' : handOutcomes[idx] === 'Lose' ? 'bg-red-500/30 text-red-200' : handOutcomes[idx] === 'Blackjack' ? 'bg-yellow-400/30 text-yellow-200' : 'bg-slate-500/30 text-slate-200'}`}
                   >
-                    {handOutcomes[idx]}
+                    {handOutcomes[idx] === 'Blackjack' ? 'Blackjack +3:2' : handOutcomes[idx]}
                   </motion.span>
                 )}
               </div>
@@ -418,6 +435,7 @@ const BlackjackTrainer = () => {
           </div>
         ))}
 
+        {/* Action Bar */}
         {inRound && (
           <div className="flex flex-wrap gap-3">
             <button onClick={hit} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow">Hit</button>
@@ -425,14 +443,7 @@ const BlackjackTrainer = () => {
             {isPair(playerHands[activeHand]) && (
               <button onClick={split} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded shadow">Split</button>
             )}
-            <button
-              onClick={doubleDown}
-              disabled={!canDouble}
-              className={`px-4 py-2 rounded shadow ${canDouble ? 'bg-black text-white' : 'bg-black/40 text-white/50 cursor-not-allowed'}`}
-              title="Double Down (draw one card, then stand)"
-            >
-              Double
-            </button>
+            <button onClick={doubleDown} disabled={!canDouble} className={`px-4 py-2 rounded shadow ${canDouble ? 'bg-black text-white' : 'bg-black/40 text-white/50 cursor-not-allowed'}`} title="Double Down (draw one card, then stand)">Double</button>
           </div>
         )}
       </div>
