@@ -1,0 +1,29 @@
+Build me a React blackjack training app with these features:
+
+Only plays soft hands, pair splits.
+
+Supports betting, auto-deal, double down (DAS allowed), and split Aces get only one card each.
+
+Blackjack pays 3:2 automatically.
+
+The dealer’s hole card is hidden until their turn. Add a short pause before the dealer plays.
+
+Show player’s bankroll updates with a clear indication when it changes.
+
+Add sound effects and animations for dealing, flipping, and winning.
+
+Add graphics for cards and chips (no plain text hands).
+
+After each move, tell the player if it was correct or incorrect based on basic strategy (S17, no surrender, DAS allowed).
+
+Strategy includes pairs, soft totals, and hard totals:
+
+Pairs: Split A,A and 8,8 always. 10-value pairs (10/J/Q/K) → Stand. 9,9 split vs 2–9 except 7. 7,7 split vs 2–7. 6,6 split vs 2–6. 4,4 split vs 5–6. 3,3 & 2,2 split vs 2–7. Otherwise hit.
+
+Soft hands: A2–A3 double vs 5–6 else hit. A4–A5 double vs 4–6 else hit. A6 double vs 3–6 else hit. A7 double vs 3–6; stand vs 2,7,8; hit vs 9,10,A. A8+ stand.
+
+Hard hands: 17+ stand. 13–16 stand vs 2–6 else hit. 12 stand vs 4–6 else hit. 11 double vs any. 10 double vs 2–9 else hit. 9 double vs 3–6 else hit. 8 or less hit.
+
+Hide the Split button for ten-value pairs (10/J/Q/K).
+
+Include basic strategy tests to confirm logic.
