@@ -16,12 +16,23 @@ Blackjack training app focused on teaching basic strategy for soft hands, hard h
 - Framer Motion for animations
 - lucide-react for icons
 
+## Features
+
+- **Settings panel** (gear icon): Toggle which hand types to practice (hard/soft/pairs)
+- **Pairs mode**: Excludes 10-value combinations (10, J, Q, K)
+- **Betting system** with bankroll tracking and visual feedback
+- **Auto-deal** option for continuous practice
+- **Strategy feedback**: Indicates correct/incorrect moves after each action
+- **Sound effects** for dealing, flipping, winning
+- **Animations** for card dealing and flipping (Framer Motion)
+
 ## Game Rules (S17, DAS, No Surrender)
 
 - Dealer stands on soft 17 (S17)
 - Double After Split allowed (DAS)
 - Blackjack pays 3:2
 - Split Aces receive one card only
+- Dealer hole card hidden until reveal (with flip animation)
 - 6-deck shoe
 
 ## Basic Strategy Rules
@@ -68,3 +79,21 @@ These are standalone JSX components. To use:
 - Hand classification: hard/soft/pairs
 - Card values: A=11 (or 1), J/Q/K/10=10, others=face value
 - Hole card hidden until dealer's turn with flip animation
+
+## Testing
+
+Run the test suite:
+```bash
+npm install --save-dev jest
+npm test
+```
+
+Test file: `blackjack_trainer.test.js`
+
+Coverage includes:
+- **Utility functions**: `rankValue`, `isTenValueRank`, `shuffle`, `makeShoe`, `handTotal`
+- **Hand classification**: hard/soft/pairs detection, 10-value pair exclusion
+- **Blackjack detection**: 2-card 21 vs multi-card 21
+- **Basic strategy**: All pair, soft, and hard hand decisions
+- **Settlement logic**: Blackjack 3:2 payout, busts, wins, losses, pushes
+- **Edge cases**: Double/split unavailable scenarios
