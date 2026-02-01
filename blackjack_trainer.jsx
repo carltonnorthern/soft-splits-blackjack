@@ -472,7 +472,7 @@ export default function BlackjackTrainer() { // main component
 
     setMessage(messages.join("\n"));
     if (net > 0) playSfx("win"); else if (net < 0) playSfx("lose"); else playSfx("push");
-    setBankroll((b) => b + totalDelta); setBankrollDelta(totalDelta);
+    setBankroll((b) => b + totalDelta); setBankrollDelta(net);
     setPhase("settle");
     if (autoDeal) { const id = handIdRef.current; setTimeout(() => { if (handIdRef.current === id) startHand(); }, 1200); }
   };
