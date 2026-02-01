@@ -970,3 +970,169 @@ describe("Bankroll Edge Cases", () => {
     expect(result.delta).toBe(2000);
   });
 });
+
+// ============================================================
+// HISTORY / BANKROLL CONSISTENCY TESTS
+// ============================================================
+
+describe("History and Bankroll Consistency", () => {
+  /**
+   * Simulates the exact flow used in the app:
+   * 1. Start with initial bankroll
+   * 2. For each hand: deduct bet, then add delta
+   * 3. Record net in history
+   * 4. Verify: initialBankroll + sum(history.net) === finalBankroll
+   */
+  function simulateSession(initialBankroll, hands) {
+    let bankroll = initialBankroll;
+    const history = [];
+
+    for (const hand of hands) {
+      const { playerCards, dealerCards, bet, actions = [] } = hand;
+
+      // Deduct initial bet
+      bankroll -= bet;
+
+      // Process actions (double/split)
+      let totalBet = bet;
+      let handsToSettle = [{ cards: playerCards, bet }];
+
+      for (const action of actions) {
+        if (action === 'double') {
+          bankroll -= bet;
+          totalBet += bet;
+          handsToSettle[0].bet *= 2;
+        } else if (action === 'split') {
+          bankroll -= bet;
+          totalBet += bet;
+          handsToSettle = [
+            { cards: [playerCards[0], hand.splitCard1], bet },
+            { cards: [playerCards[1], hand.splitCard2], bet }
+          ];
+        }
+      }
+
+      // Settle hands
+      let totalDelta = 0;
+      for (const h of handsToSettle) {
+        const result = settleHand(h.cards, dealerCards, h.bet);
+        totalDelta += result.delta;
+      }
+
+      // Update bankroll
+      bankroll += totalDelta;
+
+      // Record in history (matches app's historyEntry structure)
+      const net = totalDelta - totalBet;
+      history.push({
+        totalBet,
+        totalReturn: totalDelta,
+        net
+      });
+    }
+
+    return { finalBankroll: bankroll, history };
+  }
+
+  test("Single win: bankroll matches history", () => {
+    const { finalBankroll, history } = simulateSession(1000, [
+      { playerCards: makeCards("10", "9"), dealerCards: makeCards("10", "8"), bet: 25 }
+    ]);
+
+    const historyNet = history.reduce((sum, h) => sum + h.net, 0);
+    expect(1000 + historyNet).toBe(finalBankroll);
+    expect(finalBankroll).toBe(1025);
+  });
+
+  test("Single loss: bankroll matches history", () => {
+    const { finalBankroll, history } = simulateSession(1000, [
+      { playerCards: makeCards("10", "8"), dealerCards: makeCards("10", "9"), bet: 25 }
+    ]);
+
+    const historyNet = history.reduce((sum, h) => sum + h.net, 0);
+    expect(1000 + historyNet).toBe(finalBankroll);
+    expect(finalBankroll).toBe(975);
+  });
+
+  test("Multiple hands: bankroll matches history sum", () => {
+    const { finalBankroll, history } = simulateSession(1000, [
+      { playerCards: makeCards("10", "9"), dealerCards: makeCards("10", "8"), bet: 25 },  // win +25
+      { playerCards: makeCards("10", "8"), dealerCards: makeCards("10", "9"), bet: 25 },  // lose -25
+      { playerCards: makeCards("A", "K"), dealerCards: makeCards("10", "8"), bet: 25 },   // BJ +37
+      { playerCards: makeCards("10", "7"), dealerCards: makeCards("10", "7"), bet: 25 },  // push 0
+      { playerCards: makeCards("10", "6", "8"), dealerCards: makeCards("10", "7"), bet: 50 }, // bust -50
+    ]);
+
+    const historyNet = history.reduce((sum, h) => sum + h.net, 0);
+    expect(1000 + historyNet).toBe(finalBankroll);
+    // +25 -25 +37 +0 -50 = -13
+    expect(historyNet).toBe(-13);
+    expect(finalBankroll).toBe(987);
+  });
+
+  test("Mixed outcomes with doubles: bankroll matches history", () => {
+    const { finalBankroll, history } = simulateSession(1000, [
+      { playerCards: makeCards("6", "5", "10"), dealerCards: makeCards("10", "7"), bet: 25, actions: ['double'] }, // double win +50
+      { playerCards: makeCards("6", "5", "6"), dealerCards: makeCards("10", "8"), bet: 25, actions: ['double'] },  // double lose -50
+      { playerCards: makeCards("10", "9"), dealerCards: makeCards("10", "8"), bet: 25 }, // win +25
+    ]);
+
+    const historyNet = history.reduce((sum, h) => sum + h.net, 0);
+    expect(1000 + historyNet).toBe(finalBankroll);
+    // +50 -50 +25 = +25
+    expect(historyNet).toBe(25);
+    expect(finalBankroll).toBe(1025);
+  });
+
+  test("Long session with varying bets: bankroll matches history", () => {
+    const { finalBankroll, history } = simulateSession(1000, [
+      { playerCards: makeCards("10", "9"), dealerCards: makeCards("10", "8"), bet: 5 },   // win +5
+      { playerCards: makeCards("10", "9"), dealerCards: makeCards("10", "8"), bet: 100 }, // win +100
+      { playerCards: makeCards("10", "8"), dealerCards: makeCards("10", "9"), bet: 50 },  // lose -50
+      { playerCards: makeCards("A", "K"), dealerCards: makeCards("10", "8"), bet: 100 },  // BJ +150
+      { playerCards: makeCards("10", "8"), dealerCards: makeCards("10", "9"), bet: 25 },  // lose -25
+      { playerCards: makeCards("10", "8"), dealerCards: makeCards("10", "9"), bet: 25 },  // lose -25
+      { playerCards: makeCards("10", "8"), dealerCards: makeCards("10", "9"), bet: 25 },  // lose -25
+      { playerCards: makeCards("10", "9"), dealerCards: makeCards("10", "8"), bet: 25 },  // win +25
+    ]);
+
+    const historyNet = history.reduce((sum, h) => sum + h.net, 0);
+    expect(1000 + historyNet).toBe(finalBankroll);
+    // +5 +100 -50 +150 -25 -25 -25 +25 = +155
+    expect(historyNet).toBe(155);
+    expect(finalBankroll).toBe(1155);
+  });
+
+  test("History net calculation is correct", () => {
+    const { history } = simulateSession(1000, [
+      { playerCards: makeCards("10", "9"), dealerCards: makeCards("10", "8"), bet: 25 }, // win
+    ]);
+
+    // For a simple win: totalBet=25, totalReturn=50, net=25
+    expect(history[0].totalBet).toBe(25);
+    expect(history[0].totalReturn).toBe(50);
+    expect(history[0].net).toBe(25);
+  });
+
+  test("History net for blackjack is correct", () => {
+    const { history } = simulateSession(1000, [
+      { playerCards: makeCards("A", "K"), dealerCards: makeCards("10", "8"), bet: 25 },
+    ]);
+
+    // For blackjack: totalBet=25, totalReturn=62, net=37
+    expect(history[0].totalBet).toBe(25);
+    expect(history[0].totalReturn).toBe(62);
+    expect(history[0].net).toBe(37);
+  });
+
+  test("History net for double is correct", () => {
+    const { history } = simulateSession(1000, [
+      { playerCards: makeCards("6", "5", "10"), dealerCards: makeCards("10", "7"), bet: 25, actions: ['double'] },
+    ]);
+
+    // For double win: totalBet=50, totalReturn=100, net=50
+    expect(history[0].totalBet).toBe(50);
+    expect(history[0].totalReturn).toBe(100);
+    expect(history[0].net).toBe(50);
+  });
+});

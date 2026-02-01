@@ -314,7 +314,7 @@ export default function BlackjackTrainer() { // main component
       if (handIdRef.current !== id) return; // stale timeout
       setPhase("player");
       const playerBJ = isBlackjack(p1); const dealerBJ = isBlackjack(d);
-      if (playerBJ || dealerBJ) { revealDealer(() => resolveRound(id), id); }
+      if (playerBJ || dealerBJ) { revealDealer(() => resolveRound(id, d), id); }
     }, 350);
   };
 
