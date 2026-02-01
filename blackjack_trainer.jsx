@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, RefreshCw, Volume2, VolumeX, Coins, CheckCircle2, XCircle, Shuffle, Settings } from "lucide-react";
+import { Play, RefreshCw, Volume2, VolumeX, Coins, CheckCircle2, XCircle, Shuffle, Settings, Lightbulb } from "lucide-react";
 
 // =============================================================
 // Blackjack Trainer - S17 • DAS • 3:2 (Full App, syntax fixed)
@@ -230,6 +230,7 @@ export default function BlackjackTrainer() { // main component
   const [active, setActive] = useState(0);
   const [message, setMessage] = useState("");
   const [correctness, setCorrectness] = useState(null); // {ok, text}
+  const [hint, setHint] = useState(null); // {action, reason}
   const [testOutput, setTestOutput] = useState(null);
   // Settings
   const [showSettings, setShowSettings] = useState(false);
@@ -257,7 +258,18 @@ export default function BlackjackTrainer() { // main component
     setPlayerHands([]);
     setActive(0);
     setCorrectness(null);
+    setHint(null);
     setMessage("");
+  };
+
+  // Show hint for current hand
+  const showHint = () => {
+    const hand = playerHands[active];
+    if (!hand) return;
+    const dealerUp = dealer.cards[0];
+    const firstMove = hand.cards.length === 2 && !hand.doubled && !hand.done;
+    const strat = basicStrategyDecision(hand.cards, dealerUp, { canDouble: canDouble(hand, firstMove), canSplit: canSplit(hand) });
+    setHint({ action: strat.action, reason: strat.reason });
   };
 
   const startHand = () => {
@@ -337,6 +349,7 @@ export default function BlackjackTrainer() { // main component
   const doHit = () => {
     const hands = clone(playerHands); const h = hands[active];
     assessAction(h, "HIT");
+    setHint(null);
     h.cards.push(draw()); playSfx("deal");
     const { total } = handTotal(h.cards);
     if (total >= 21) { h.done = true; advanceHand(hands); }
@@ -345,7 +358,9 @@ export default function BlackjackTrainer() { // main component
 
   const doStand = () => {
     const hands = clone(playerHands); const h = hands[active];
-    assessAction(h, "STAND"); h.done = true; advanceHand(hands);
+    assessAction(h, "STAND");
+    setHint(null);
+    h.done = true; advanceHand(hands);
   };
 
   const doDouble = () => {
@@ -353,6 +368,7 @@ export default function BlackjackTrainer() { // main component
     const first = h.cards.length === 2 && !h.doubled && !h.done;
     if (!canDouble(h, first)) return;
     assessAction(h, "DOUBLE");
+    setHint(null);
     setBankroll((b) => b - h.bet); setBankrollDelta(-h.bet);
     h.bet *= 2; h.doubled = true; h.cards.push(draw()); playSfx("deal"); h.done = true; advanceHand(hands);
   };
@@ -362,6 +378,7 @@ export default function BlackjackTrainer() { // main component
     if (!canSplit(h)) return;
     const isTenPair = isTenValueRank(h.cards[0].r) && isTenValueRank(h.cards[1].r); if (isTenPair) return; // UI hides, logic guards
     assessAction(h, "SPLIT");
+    setHint(null);
     setBankroll((b) => b - h.bet); setBankrollDelta(-h.bet);
     const [c1, c2] = h.cards;
     const h1 = { cards: [c1, draw()], bet: h.bet, done: false, doubled: false, splitAces: c1.r === "A" };
@@ -592,12 +609,28 @@ export default function BlackjackTrainer() { // main component
                     {h.splitAces && <div className="ml-2 text-xs text-white/70">Split Aces (one card only)</div>}
                   </div>
                   {isActive && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <button onClick={doHit} disabled={!canHit(h)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50">Hit</button>
-                      <button onClick={doStand} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10">Stand</button>
-                      <button onClick={doDouble} disabled={!canDouble(h, isFirstAction)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50">Double</button>
-                      {showSplitButton && idx === active && (<button onClick={doSplit} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10">Split</button>)}
-                      {isTenPair && idx === active && (<div className="text-xs text-white/70 ml-2">10-value pair: Split disabled (strategy = Stand)</div>)}
+                    <div className="mt-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button onClick={doHit} disabled={!canHit(h)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50">Hit</button>
+                        <button onClick={doStand} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10">Stand</button>
+                        <button onClick={doDouble} disabled={!canDouble(h, isFirstAction)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 disabled:opacity-50">Double</button>
+                        {showSplitButton && idx === active && (<button onClick={doSplit} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10">Split</button>)}
+                        <button onClick={showHint} className="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/30 flex items-center gap-1"><Lightbulb size={16} /> Hint</button>
+                        {isTenPair && idx === active && (<div className="text-xs text-white/70 ml-2">10-value pair: Split disabled (strategy = Stand)</div>)}
+                      </div>
+                      {hint && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-2 p-2 rounded-lg bg-amber-500/20 border border-amber-400/30 text-amber-200"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Lightbulb size={16} className="text-amber-400" />
+                            <span className="font-semibold">Optimal: {hint.action}</span>
+                          </div>
+                          <div className="text-sm text-amber-200/80 mt-1">{hint.reason}</div>
+                        </motion.div>
+                      )}
                     </div>
                   )}
                 </div>
