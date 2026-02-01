@@ -243,6 +243,10 @@ export default function BlackjackTrainer() { // main component
   const shoeRef = useRef(shoe);
   useEffect(() => { shoeRef.current = shoe; }, [shoe]);
 
+  // Keep ref in sync with playerHands to avoid stale closures in timeouts
+  const playerHandsRef = useRef(playerHands);
+  useEffect(() => { playerHandsRef.current = playerHands; }, [playerHands]);
+
   // Draw from shoe; keep ref + state in sync so multiple draws in one tick see latest state
   const draw = () => {
     let s = shoeRef.current;
@@ -444,8 +448,9 @@ export default function BlackjackTrainer() { // main component
   const resolveRound = (expectedId, dealerCardsOverride = null) => {
     if (expectedId && handIdRef.current !== expectedId) return;
     const dCards = dealerCardsOverride || dealer.cards; let totalDelta = 0; const messages = [];
-    for (const h of playerHands) { const res = settleHand(h, dCards); totalDelta += res.delta; messages.push(res.text); }
-    const net = totalDelta - playerHands.reduce((a, h) => a + h.bet, 0);
+    const hands = playerHandsRef.current; // use ref to avoid stale closure
+    for (const h of hands) { const res = settleHand(h, dCards); totalDelta += res.delta; messages.push(res.text); }
+    const net = totalDelta - hands.reduce((a, h) => a + h.bet, 0);
     setMessage(messages.join("\n"));
     if (net > 0) playSfx("win"); else if (net < 0) playSfx("lose"); else playSfx("push");
     setBankroll((b) => b + totalDelta); setBankrollDelta(totalDelta);
