@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, RefreshCw, Volume2, VolumeX, Coins, CheckCircle2, XCircle, Shuffle, Settings, Lightbulb } from "lucide-react";
+import { Play, RefreshCw, Volume2, VolumeX, Coins, CheckCircle2, XCircle, Shuffle, Settings, Lightbulb, History } from "lucide-react";
 
 // =============================================================
 // Blackjack Trainer - S17 • DAS • 3:2 (Full App, syntax fixed)
@@ -236,6 +236,10 @@ export default function BlackjackTrainer() { // main component
   const [showSettings, setShowSettings] = useState(false);
   const [allowedTypes, setAllowedTypes] = useState({ hard: true, soft: true, pairs: true });
 
+  // History
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState([]); // [{id, playerHands, dealerCards, results, totalBet, totalReturn, net, timestamp}]
+
   // Hand identity to prevent stale timeouts from mutating a new hand
   const handIdRef = useRef(0);
   const nextHandId = () => ++handIdRef.current;
@@ -447,10 +451,25 @@ export default function BlackjackTrainer() { // main component
 
   const resolveRound = (expectedId, dealerCardsOverride = null) => {
     if (expectedId && handIdRef.current !== expectedId) return;
-    const dCards = dealerCardsOverride || dealer.cards; let totalDelta = 0; const messages = [];
+    const dCards = dealerCardsOverride || dealer.cards; let totalDelta = 0; const messages = []; const results = [];
     const hands = playerHandsRef.current; // use ref to avoid stale closure
-    for (const h of hands) { const res = settleHand(h, dCards); totalDelta += res.delta; messages.push(res.text); }
-    const net = totalDelta - hands.reduce((a, h) => a + h.bet, 0);
+    for (const h of hands) { const res = settleHand(h, dCards); totalDelta += res.delta; messages.push(res.text); results.push(res); }
+    const totalBet = hands.reduce((a, h) => a + h.bet, 0);
+    const net = totalDelta - totalBet;
+
+    // Record hand in history
+    const historyEntry = {
+      id: Date.now(),
+      playerHands: clone(hands),
+      dealerCards: clone(dCards),
+      results,
+      totalBet,
+      totalReturn: totalDelta,
+      net,
+      timestamp: new Date().toLocaleTimeString(),
+    };
+    setHistory((prev) => [historyEntry, ...prev]);
+
     setMessage(messages.join("\n"));
     if (net > 0) playSfx("win"); else if (net < 0) playSfx("lose"); else playSfx("push");
     setBankroll((b) => b + totalDelta); setBankrollDelta(totalDelta);
@@ -535,6 +554,7 @@ export default function BlackjackTrainer() { // main component
         <header className="flex items-center justify-between gap-2 mb-4">
           <h1 className="text-xl sm:text-2xl font-bold">Blackjack Trainer — S17 • DAS • 3:2 BJ</h1>
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowHistory((v) => !v)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 flex items-center gap-2"><History size={18} /> <span className="hidden sm:inline">History</span>{history.length > 0 && <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">{history.length}</span>}</button>
             <button onClick={() => setShowSettings((v) => !v)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 flex items-center gap-2"><Settings size={18} /> <span className="hidden sm:inline">Settings</span></button>
             <button onClick={() => setMuted((m) => !m)} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 flex items-center gap-2">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />} <span className="hidden sm:inline">Sound</span></button>
             <button onClick={() => { const ns = makeShoe(6); shoeRef.current = ns; setShoe(ns); }} className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 flex items-center gap-2" title="Shuffle shoe"><Shuffle size={18} /> <span className="hidden sm:inline">Shuffle</span></button>
@@ -562,6 +582,74 @@ export default function BlackjackTrainer() { // main component
             </div>
             {!allowedTypes.hard && !allowedTypes.soft && !allowedTypes.pairs && (
               <div className="mt-3 text-xs text-rose-300">Select at least one type to enable dealing.</div>
+            )}
+          </div>
+        )}
+
+        {/* History Panel */}
+        {showHistory && (
+          <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4 max-h-96 overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold flex items-center gap-2"><History size={16} /> Hand History</div>
+              {history.length > 0 && (
+                <button onClick={() => setHistory([])} className="text-xs px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/30 text-rose-300">Clear History</button>
+              )}
+            </div>
+            {history.length === 0 ? (
+              <div className="text-sm text-white/60">No hands played yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {history.map((entry) => (
+                  <div key={entry.id} className={`p-3 rounded-xl border ${entry.net > 0 ? "bg-emerald-500/10 border-emerald-400/20" : entry.net < 0 ? "bg-rose-500/10 border-rose-400/20" : "bg-white/5 border-white/10"}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs text-white/60">{entry.timestamp}</div>
+                      <div className={`text-sm font-semibold ${entry.net > 0 ? "text-emerald-400" : entry.net < 0 ? "text-rose-400" : "text-white/70"}`}>
+                        {entry.net > 0 ? `+$${entry.net}` : entry.net < 0 ? `-$${Math.abs(entry.net)}` : "Push"}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-4 text-sm">
+                      <div>
+                        <div className="text-xs text-white/60 mb-1">Dealer</div>
+                        <div className="flex items-center gap-1">
+                          {entry.dealerCards.map((c, i) => (
+                            <span key={i} className={`px-1.5 py-0.5 rounded bg-white/10 text-xs font-mono ${["♥", "♦"].includes(c.s) ? "text-red-400" : "text-white"}`}>{c.r}{c.s}</span>
+                          ))}
+                          <span className="ml-1 text-white/70">({handTotal(entry.dealerCards).total})</span>
+                        </div>
+                      </div>
+                      {entry.playerHands.map((h, idx) => (
+                        <div key={idx}>
+                          <div className="text-xs text-white/60 mb-1">Hand {entry.playerHands.length > 1 ? `#${idx + 1}` : ""} (Bet: ${h.bet})</div>
+                          <div className="flex items-center gap-1">
+                            {h.cards.map((c, i) => (
+                              <span key={i} className={`px-1.5 py-0.5 rounded bg-white/10 text-xs font-mono ${["♥", "♦"].includes(c.s) ? "text-red-400" : "text-white"}`}>{c.r}{c.s}</span>
+                            ))}
+                            <span className="ml-1 text-white/70">({handTotal(h.cards).total})</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-xs text-white/70">
+                      {entry.results.map((r, i) => (
+                        <div key={i}>{r.text}</div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {history.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-sm">
+                <div>
+                  <span className="text-white/60">Hands played:</span> <span className="font-semibold">{history.length}</span>
+                </div>
+                <div>
+                  <span className="text-white/60">Net:</span>{" "}
+                  <span className={`font-semibold ${history.reduce((a, e) => a + e.net, 0) > 0 ? "text-emerald-400" : history.reduce((a, e) => a + e.net, 0) < 0 ? "text-rose-400" : "text-white/70"}`}>
+                    {history.reduce((a, e) => a + e.net, 0) >= 0 ? "+$" : "-$"}{Math.abs(history.reduce((a, e) => a + e.net, 0))}
+                  </span>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -680,7 +768,10 @@ export default function BlackjackTrainer() { // main component
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="font-semibold">Strategy Tests</div>
-                <div className={`text-sm ${testOutput.ok ? "text-emerald-300" : "text-rose-300"}`}>{testOutput.ok ? "All tests passed" : "Some tests failed"}</div>
+                <div className="flex items-center gap-3">
+                  <div className={`text-sm ${testOutput.ok ? "text-emerald-300" : "text-rose-300"}`}>{testOutput.ok ? "All tests passed" : "Some tests failed"}</div>
+                  <button onClick={() => setTestOutput(null)} className="text-white/60 hover:text-white/90 text-xl leading-none">&times;</button>
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {testOutput.cases.map((c, i) => (
